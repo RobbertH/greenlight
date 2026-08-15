@@ -53,6 +53,26 @@ class CycleEstimate {
     if (next <= nowMs) next += cMs;
     return next.round();
   }
+
+  /// Signed circular distance of a tap from the fitted cadence, in seconds,
+  /// in [-C/2, C/2). Near zero means the tap sits on the cycle.
+  double residualSeconds(int tsMs) {
+    final s = (tsMs - anchorMs) / 1000.0 - phaseSeconds;
+    var r = s % cycleSeconds; // Dart % is non-negative for a positive divisor
+    if (r >= cycleSeconds / 2) r -= cycleSeconds;
+    return r;
+  }
+
+  /// The odd one out: a tap that does not fit the detected cadence — likely a
+  /// mistap (or a genuine off-cycle green). Only meaningful when the estimate
+  /// itself is confident. Threshold: 3σ of the fit, floored at 2 s (reaction
+  /// jitter), capped at a quarter cycle so a noisy fit can't flag everything.
+  bool isOutlier(int tsMs) {
+    if (tier == ConfidenceTier.insufficient) return false;
+    final threshold =
+        math.min(cycleSeconds / 4, math.max(2.0, 3 * sigmaSeconds));
+    return residualSeconds(tsMs).abs() > threshold;
+  }
 }
 
 class CycleEstimator {

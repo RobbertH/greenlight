@@ -22,9 +22,11 @@ OpenStreetMap's `crossing=traffic_signals` nodes.
 3. **Record**: while waiting at red, open the record screen (or just look at
    the home-screen widget) and tap the big green button at the exact moment
    the light turns green.
-4. **Predict**: after ≥5 records spanning a few cycles, the record screen and
-   detail screen show the estimated cycle length and a countdown to the next
-   green, gated by a statistical confidence test.
+4. **Predict**: one tap per visit is all it takes — after ~5 visits the
+   record and detail screens show the estimated cycle length and a countdown
+   to the next green, gated by a statistical confidence test. Records that
+   don't fit the detected cadence are marked orange in the history (likely
+   mistaps) and can be deleted individually.
 
 ## Home-screen widget
 

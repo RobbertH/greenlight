@@ -28,6 +28,50 @@ class _LightDetailScreenState extends State<LightDetailScreen> {
 
   LightRepository get _repo => widget.state.repo;
 
+  int get _outlierCount => _events.where(_isOutlier).length;
+
+  /// The odd one out: doesn't fit the detected cadence. Events older than the
+  /// estimator's window aged out of the fit, so residuals there mean nothing.
+  bool _isOutlier(LightEvent e) {
+    final est = _estimate;
+    if (est == null) return false;
+    final cutoff = DateTime.now().millisecondsSinceEpoch -
+        CycleEstimator.maxAgeDays * 86400000;
+    if (e.tsMs < cutoff) return false;
+    return est.isOutlier(e.tsMs);
+  }
+
+  Widget _eventTile(LightEvent e) {
+    final odd = _isOutlier(e);
+    const orange = Colors.orange;
+    return ListTile(
+      dense: true,
+      leading: Icon(
+        odd
+            ? Icons.warning_amber_rounded
+            : e.source == 'widget'
+                ? Icons.widgets_outlined
+                : Icons.smartphone,
+        size: 20,
+        color: odd ? orange : null,
+      ),
+      title: Text(fmtDateTime(e.tsMs),
+          style: odd ? const TextStyle(color: orange) : null),
+      subtitle: Text(odd
+          ? 'via ${e.source} · off the cadence by '
+              '${_estimate!.residualSeconds(e.tsMs).abs().toStringAsFixed(1)} s'
+          : 'via ${e.source}'),
+      trailing: IconButton(
+        icon: const Icon(Icons.delete_outline, size: 20),
+        tooltip: 'Delete this event',
+        onPressed: () async {
+          await widget.state.deleteEvent(e.id);
+          await _load();
+        },
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -166,31 +210,21 @@ class _LightDetailScreenState extends State<LightDetailScreen> {
                               '· p=${_estimate!.pValue.toStringAsExponential(1)} '
                               '· used n=${_estimate!.n}'),
                         ],
+                        if (_outlierCount > 0) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            "$_outlierCount record${_outlierCount == 1 ? '' : 's'} "
+                            "(orange below) don't fit the cadence — delete "
+                            'them if they were mistaps.',
+                            style: const TextStyle(color: Colors.orange),
+                          ),
+                        ],
                       ],
                     ),
                   ),
                 ),
                 const SizedBox(height: 4),
-                for (final e in _events)
-                  ListTile(
-                    dense: true,
-                    leading: Icon(
-                      e.source == 'widget'
-                          ? Icons.widgets_outlined
-                          : Icons.smartphone,
-                      size: 20,
-                    ),
-                    title: Text(fmtDateTime(e.tsMs)),
-                    subtitle: Text('via ${e.source}'),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 20),
-                      tooltip: 'Delete this event',
-                      onPressed: () async {
-                        await widget.state.deleteEvent(e.id);
-                        await _load();
-                      },
-                    ),
-                  ),
+                for (final e in _events) _eventTile(e),
                 const SizedBox(height: 24),
               ],
             ),

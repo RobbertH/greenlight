@@ -169,6 +169,32 @@ void main() {
     }
   });
 
+  test('residuals: on-cadence taps near zero, a 20 s mistap is the odd one out',
+      () {
+    final ts = synthetic(cycleS: 90, phaseS: 17, days: 3, samples: 40, seed: 8);
+    final est = CycleEstimator.estimate(ts)!;
+
+    final onCadence = est.nextGreenMs(ts.last + 30000);
+    expect(est.residualSeconds(onCadence).abs(), lessThan(0.5));
+    expect(est.isOutlier(onCadence), isFalse);
+
+    final mistap = onCadence + 20000;
+    expect(est.residualSeconds(mistap).abs(), closeTo(20, 1));
+    expect(est.isOutlier(mistap), isTrue);
+
+    // Residual is circular: one full cycle later is on-cadence again.
+    expect(est.isOutlier(onCadence + (est.cycleSeconds * 1000).round()),
+        isFalse);
+  });
+
+  test('normal reaction jitter rarely flags real taps as outliers', () {
+    final ts = synthetic(cycleS: 90, phaseS: 17, days: 3, samples: 60, seed: 4);
+    final est = CycleEstimator.estimate(ts)!;
+    final flagged = ts.where(est.isOutlier).length;
+    expect(flagged, lessThanOrEqualTo(3),
+        reason: '$flagged of ${ts.length} flagged');
+  });
+
   test('prediction lands within one cycle of now', () {
     final ts = synthetic(cycleS: 75, phaseS: 5, days: 2, samples: 40, seed: 13);
     final est = CycleEstimator.estimate(ts)!;

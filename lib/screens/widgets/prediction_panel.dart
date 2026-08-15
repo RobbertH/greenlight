@@ -55,8 +55,8 @@ class _PredictionPanelState extends State<PredictionPanel> {
     } else if (est == null) {
       body = Text(
         widget.eventCount < 5
-            ? 'No cycle yet — ${widget.eventCount} of 5 minimum records. '
-                'Tap each time this light turns green.'
+            ? 'One tap per visit is all it takes. The cycle emerges after '
+                '5 visits — ${widget.eventCount} so far.'
             : 'No usable cycle yet — the records are too old or too close '
                 'together. Recent taps count most (last 30 days).',
         style: theme.textTheme.bodyMedium,
