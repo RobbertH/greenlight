@@ -195,6 +195,26 @@ void main() {
         reason: '$flagged of ${ts.length} flagged');
   });
 
+  test('green window: green just after an onset, red later, green next cycle',
+      () {
+    final ts = synthetic(cycleS: 90, phaseS: 17, days: 3, samples: 40, seed: 8);
+    final est = CycleEstimator.estimate(ts)!;
+
+    final onset = est.nextGreenMs(ts.last + 30000);
+    expect(est.isGreenAt(onset + 1000, 10), isTrue);
+    expect(est.isGreenAt(onset + 9000, 10), isTrue);
+    expect(est.isGreenAt(onset + 11500, 10), isFalse);
+    expect(est.isGreenAt(onset + 60000, 10), isFalse);
+
+    final nextOnset = est.nextGreenMs(onset + 60000);
+    expect(est.isGreenAt(nextOnset + 1000, 10), isTrue);
+
+    // The countdown advances one second per wall-clock second while red.
+    final t0 = onset + 30000;
+    expect(est.secondsUntilGreen(t0) - est.secondsUntilGreen(t0 + 1000),
+        closeTo(1.0, 1e-6));
+  });
+
   test('prediction lands within one cycle of now', () {
     final ts = synthetic(cycleS: 75, phaseS: 5, days: 2, samples: 40, seed: 13);
     final est = CycleEstimator.estimate(ts)!;

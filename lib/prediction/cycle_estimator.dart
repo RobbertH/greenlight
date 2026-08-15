@@ -54,6 +54,14 @@ class CycleEstimate {
     return next.round();
   }
 
+  /// Seconds until the next predicted green onset, in (0, C].
+  double secondsUntilGreen(int nowMs) => (nextGreenMs(nowMs) - nowMs) / 1000.0;
+
+  /// Whether the light is predicted to be showing green at [nowMs], assuming
+  /// it stays green for [greenSeconds] after each onset.
+  bool isGreenAt(int nowMs, num greenSeconds) =>
+      cycleSeconds - secondsUntilGreen(nowMs) < greenSeconds;
+
   /// Signed circular distance of a tap from the fitted cadence, in seconds,
   /// in [-C/2, C/2). Near zero means the tap sits on the cycle.
   double residualSeconds(int tsMs) {

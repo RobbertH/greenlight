@@ -27,6 +27,10 @@ OpenStreetMap's `crossing=traffic_signals` nodes.
    to the next green, gated by a statistical confidence test. Records that
    don't fit the detected cadence are marked orange in the history (likely
    mistaps) and can be deleted individually.
+5. **Glance at the map**: once a light has a confident fit, its pin shows the
+   record count on top and a live next-green countdown underneath, and the
+   pin itself turns green or red with the light's predicted state. Set how
+   long the light stays green in the light's detail screen (default 10 s).
 
 ## Home-screen widget
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -6,6 +8,8 @@ import 'package:latlong2/latlong.dart';
 import '../app_state.dart';
 import '../constants.dart';
 import '../data/light_repository.dart';
+import '../prediction/cycle_estimator.dart';
+import '../util.dart';
 import 'light_detail_screen.dart';
 import 'widgets/light_type_ui.dart';
 
@@ -27,6 +31,26 @@ class _MapScreenState extends State<MapScreen> {
 
   LightType _newLightType = LightType.pedestrian;
   final Set<LightType> _shownTypes = {...LightType.values};
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    // Ticks the pin countdowns once a second. Cheap: pins re-render from the
+    // cached estimates in AppState; no estimator work happens here.
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final anyUsable = widget.state.estimates.values
+          .any((e) => e != null && e.tier != ConfidenceTier.insufficient);
+      if (anyUsable) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
 
   Future<void> _centerOnUser({bool silent = false}) async {
     try {
@@ -216,14 +240,16 @@ class _MapScreenState extends State<MapScreen> {
                         if (_shownTypes.contains(light.type))
                           Marker(
                             point: LatLng(light.lat, light.lng),
-                            width: 44,
-                            height: 44,
+                            width: 56,
+                            height: 80,
                             child: GestureDetector(
                               onTap: () => _onMarkerTap(light),
                               child: _LightPin(
                                 active: light.id == active?.id,
                                 type: light.type,
                                 count: widget.state.eventCounts[light.id] ?? 0,
+                                estimate: widget.state.estimates[light.id],
+                                greenSeconds: light.effectiveGreenS,
                               ),
                             ),
                           ),
@@ -303,49 +329,74 @@ class _MapScreenState extends State<MapScreen> {
   }
 }
 
+/// Map pin: record count on top, the type icon in a circle colored by the
+/// light's predicted state (green/red once a confident fit exists, grey
+/// before), and the live next-green countdown underneath.
 class _LightPin extends StatelessWidget {
   final bool active;
   final LightType type;
   final int count;
+  final CycleEstimate? estimate;
+  final int greenSeconds;
 
-  const _LightPin(
-      {required this.active, required this.type, required this.count});
+  const _LightPin({
+    required this.active,
+    required this.type,
+    required this.count,
+    required this.estimate,
+    required this.greenSeconds,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
+    final est = estimate;
+    final usable = est != null && est.tier != ConfidenceTier.insufficient;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final green = usable && est.isGreenAt(now, greenSeconds);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
+        _pill('$count', Colors.black87),
+        const SizedBox(height: 2),
         Container(
-          width: 44,
-          height: 44,
+          width: 38,
+          height: 38,
           decoration: BoxDecoration(
-            color: active ? Colors.green : Colors.blueGrey,
+            color: !usable
+                ? Colors.blueGrey
+                : green
+                    ? Colors.green
+                    : Colors.red.shade600,
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 2),
-            boxShadow: const [
-              BoxShadow(blurRadius: 4, color: Colors.black38),
-            ],
+            // The active light (the one the record button and home-screen
+            // widget target) gets an amber ring instead of a white one.
+            border: Border.all(
+                color: active ? Colors.amber : Colors.white,
+                width: active ? 3 : 2),
+            boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black38)],
           ),
-          child: Icon(type.icon, color: Colors.white, size: 24),
+          child: Icon(type.icon, color: Colors.white, size: 22),
         ),
-        if (count > 0)
-          Positioned(
-            right: -4,
-            top: -4,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.black26),
-              ),
-              child: Text('$count',
-                  style: const TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.bold)),
-            ),
+        if (usable) ...[
+          const SizedBox(height: 2),
+          _pill(
+            green ? 'green' : fmtCountdown(est.nextGreenMs(now) - now),
+            green ? Colors.green.shade800 : Colors.red.shade800,
           ),
+        ],
       ],
     );
   }
+
+  Widget _pill(String text, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.black26),
+        ),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 10, fontWeight: FontWeight.bold, color: color)),
+      );
 }

@@ -99,6 +99,50 @@ void main() {
     expect(byId[car.id], LightType.car);
   });
 
+  test('green duration round-trips; unset falls back to the default', () async {
+    final light = await repo.createLight('A', 0, 0);
+    expect(light.greenS, isNull);
+    expect(light.effectiveGreenS, Light.defaultGreenS);
+
+    await repo.setGreenSeconds(light.id, 25);
+    expect((await repo.getLight(light.id))!.greenS, 25);
+    expect((await repo.getLight(light.id))!.effectiveGreenS, 25);
+
+    await repo.setGreenSeconds(light.id, null);
+    expect((await repo.getLight(light.id))!.greenS, isNull);
+  });
+
+  test('v2 database migrates to v3, green duration starts unset', () async {
+    final dir = await Directory.systemTemp.createTemp('greenlight_mig_v2');
+    final path = p.join(dir.path, 'mig2.db');
+    final v2 = await databaseFactoryFfi.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: 2,
+        onCreate: (db, _) async {
+          await db.execute('''
+            CREATE TABLE lights (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              lat REAL NOT NULL, lng REAL NOT NULL,
+              type TEXT NOT NULL DEFAULT 'pedestrian',
+              created_at INTEGER NOT NULL
+            )''');
+        },
+      ),
+    );
+    await v2.insert(
+        'lights', {'name': 'Old', 'lat': 1.0, 'lng': 2.0, 'created_at': 3});
+    await v2.close();
+
+    final v3 = await AppDatabase.open(factory: databaseFactoryFfi, path: path);
+    final lights = await LightRepository(v3).getLights();
+    expect(lights.single.greenS, isNull);
+    expect(lights.single.effectiveGreenS, Light.defaultGreenS);
+    await v3.close();
+    await dir.delete(recursive: true);
+  });
+
   test('v1 database migrates to v2, existing lights become pedestrian',
       () async {
     final dir = await Directory.systemTemp.createTemp('greenlight_migration');

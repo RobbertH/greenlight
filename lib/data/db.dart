@@ -18,7 +18,7 @@ class AppDatabase {
     return f.openDatabase(
       resolvedPath,
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) async {
           await createSchema(db, version);
@@ -38,6 +38,7 @@ class AppDatabase {
         lng REAL NOT NULL,
         type TEXT NOT NULL DEFAULT 'pedestrian'
           CHECK (type IN ('pedestrian','bike','car')),
+        green_s INTEGER,
         created_at INTEGER NOT NULL
       )''');
     // UNIQUE(light_id, ts_ms) makes pending-queue merges idempotent: replaying
@@ -58,6 +59,10 @@ class AppDatabase {
     if (oldVersion < 2) {
       await db.execute(
           "ALTER TABLE lights ADD COLUMN type TEXT NOT NULL DEFAULT 'pedestrian'");
+    }
+    if (oldVersion < 3) {
+      // NULL = not configured; the app falls back to Light.defaultGreenS.
+      await db.execute('ALTER TABLE lights ADD COLUMN green_s INTEGER');
     }
   }
 }

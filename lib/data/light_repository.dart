@@ -20,11 +20,18 @@ enum LightType {
 }
 
 class Light {
+  /// Assumed green window when the user has not configured one for a light.
+  static const defaultGreenS = 10;
+
   final int id;
   final String name;
   final double lat;
   final double lng;
   final LightType type;
+
+  /// How long this light stays green after an onset, in seconds.
+  /// Null until the user sets it in the light's settings.
+  final int? greenS;
   final int createdAt;
 
   const Light({
@@ -33,8 +40,11 @@ class Light {
     required this.lat,
     required this.lng,
     required this.type,
+    this.greenS,
     required this.createdAt,
   });
+
+  int get effectiveGreenS => greenS ?? defaultGreenS;
 
   factory Light.fromRow(Map<String, Object?> row) => Light(
         id: row['id'] as int,
@@ -42,6 +52,7 @@ class Light {
         lat: (row['lat'] as num).toDouble(),
         lng: (row['lng'] as num).toDouble(),
         type: LightType.fromDb(row['type'] as String?),
+        greenS: row['green_s'] as int?,
         createdAt: row['created_at'] as int,
       );
 }
@@ -99,6 +110,10 @@ class LightRepository {
 
   Future<void> renameLight(int id, String name) =>
       db.update('lights', {'name': name}, where: 'id = ?', whereArgs: [id]);
+
+  Future<void> setGreenSeconds(int id, int? seconds) =>
+      db.update('lights', {'green_s': seconds},
+          where: 'id = ?', whereArgs: [id]);
 
   Future<void> deleteLight(int id) async {
     await db.delete('lights', where: 'id = ?', whereArgs: [id]);

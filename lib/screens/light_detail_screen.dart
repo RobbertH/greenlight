@@ -25,6 +25,7 @@ class _LightDetailScreenState extends State<LightDetailScreen> {
   List<LightEvent> _events = const [];
   CycleEstimate? _estimate;
   bool _loading = true;
+  int? _greenS;
 
   LightRepository get _repo => widget.state.repo;
 
@@ -65,7 +66,7 @@ class _LightDetailScreenState extends State<LightDetailScreen> {
         icon: const Icon(Icons.delete_outline, size: 20),
         tooltip: 'Delete this event',
         onPressed: () async {
-          await widget.state.deleteEvent(e.id);
+          await widget.state.deleteEvent(e.id, lightId: e.lightId);
           await _load();
         },
       ),
@@ -75,6 +76,7 @@ class _LightDetailScreenState extends State<LightDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _greenS = widget.light.greenS;
     _load();
   }
 
@@ -219,6 +221,40 @@ class _LightDetailScreenState extends State<LightDetailScreen> {
                             style: const TextStyle(color: Colors.orange),
                           ),
                         ],
+                      ],
+                    ),
+                  ),
+                ),
+                Card(
+                  margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Settings', style: theme.textTheme.titleMedium),
+                        const SizedBox(height: 8),
+                        Text(_greenS == null
+                            ? 'Green lasts ~${Light.defaultGreenS} s '
+                                '(default — adjust to match this light)'
+                            : 'Green lasts ~$_greenS s'),
+                        Slider(
+                          value: (_greenS ?? Light.defaultGreenS).toDouble(),
+                          min: 3,
+                          max: 120,
+                          divisions: 117,
+                          label: '${_greenS ?? Light.defaultGreenS} s',
+                          onChanged: (v) =>
+                              setState(() => _greenS = v.round()),
+                          onChangeEnd: (v) => widget.state
+                              .setGreenSeconds(widget.light, v.round()),
+                        ),
+                        Text(
+                          'Drives the map pin: it shows green for this long '
+                          'after each predicted onset, red for the rest of '
+                          'the cycle.',
+                          style: theme.textTheme.bodySmall,
+                        ),
                       ],
                     ),
                   ),
