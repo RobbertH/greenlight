@@ -154,6 +154,7 @@ class _LightDetailScreenState extends State<LightDetailScreen> {
                       children: [
                         Text('Data', style: theme.textTheme.titleMedium),
                         const SizedBox(height: 8),
+                        Text('${widget.light.type.label} light'),
                         Text('${_events.length} green transitions recorded'),
                         if (_events.isNotEmpty) ...[
                           Text('First: ${fmtDateTime(_events.last.tsMs)}'),

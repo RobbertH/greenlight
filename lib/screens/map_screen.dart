@@ -7,6 +7,7 @@ import '../app_state.dart';
 import '../constants.dart';
 import '../data/light_repository.dart';
 import 'light_detail_screen.dart';
+import 'widgets/light_type_ui.dart';
 
 class MapScreen extends StatefulWidget {
   final AppState state;
@@ -20,15 +21,12 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final _map = MapController();
 
-  static const _fallbackCenter = LatLng(50.8466, 4.3528); // Brussels
+  // Default focus: Naamsepoort, Leuven. No auto-jump to the user's location —
+  // the locate button is there when needed.
+  static const _fallbackCenter = LatLng(defaultCenterLat, defaultCenterLng);
 
-  @override
-  void initState() {
-    super.initState();
-    // Only jump to the user when no light is selected yet; otherwise the last
-    // used light is the more useful anchor.
-    if (widget.state.activeLight == null) _centerOnUser(silent: true);
-  }
+  LightType _newLightType = LightType.pedestrian;
+  final Set<LightType> _shownTypes = {...LightType.values};
 
   Future<void> _centerOnUser({bool silent = false}) async {
     try {
@@ -63,33 +61,59 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _addLightDialog(LatLng at) async {
     final controller = TextEditingController(
         text: 'Light ${widget.state.lights.length + 1}');
+    var type = _newLightType;
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New traffic light'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(
-            labelText: 'Name',
-            hintText: 'e.g. Home → office, crossing at bakery',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('New traffic light'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Name',
+                  hintText: 'e.g. Home → office, crossing at bakery',
+                ),
+                onSubmitted: (v) => Navigator.of(ctx).pop(v),
+              ),
+              const SizedBox(height: 16),
+              SegmentedButton<LightType>(
+                segments: [
+                  for (final t in LightType.values)
+                    ButtonSegment(
+                      value: t,
+                      icon: Icon(t.icon),
+                      tooltip: t.label,
+                    ),
+                ],
+                selected: {type},
+                onSelectionChanged: (s) =>
+                    setDialogState(() => type = s.first),
+              ),
+            ],
           ),
-          onSubmitted: (v) => Navigator.of(ctx).pop(v),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(controller.text),
+                child: const Text('Add')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(controller.text),
-              child: const Text('Add')),
-        ],
       ),
     );
     if (name == null || name.trim().isEmpty) return;
-    final light =
-        await widget.state.addLight(name.trim(), at.latitude, at.longitude);
+    _newLightType = type; // remember for the next dialog
+    // A filtered-out type would make the new pin invisible — the add would
+    // look like it failed. Force its chip on.
+    setState(() => _shownTypes.add(type));
+    final light = await widget.state
+        .addLight(name.trim(), at.latitude, at.longitude, type: type);
     await widget.state.selectLight(light);
     _snack('“${light.name}” added and selected');
   }
@@ -104,10 +128,11 @@ class _MapScreenState extends State<MapScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.traffic, color: Colors.green),
+              leading: Icon(light.type.icon, color: Colors.green),
               title: Text(light.name,
                   style: Theme.of(ctx).textTheme.titleLarge),
               subtitle: Text(
+                  '${light.type.label} light · '
                   '${widget.state.eventCounts[light.id] ?? 0} greens recorded · '
                   'now active (the widget records this light)'),
             ),
@@ -176,7 +201,7 @@ class _MapScreenState extends State<MapScreen> {
                   initialCenter: active == null
                       ? _fallbackCenter
                       : LatLng(active.lat, active.lng),
-                  initialZoom: active == null ? 12 : 16,
+                  initialZoom: active == null ? defaultZoom : 17,
                   onLongPress: (_, latLng) => _addLightDialog(latLng),
                 ),
                 children: [
@@ -188,18 +213,20 @@ class _MapScreenState extends State<MapScreen> {
                   MarkerLayer(
                     markers: [
                       for (final light in widget.state.lights)
-                        Marker(
-                          point: LatLng(light.lat, light.lng),
-                          width: 44,
-                          height: 44,
-                          child: GestureDetector(
-                            onTap: () => _onMarkerTap(light),
-                            child: _LightPin(
-                              active: light.id == active?.id,
-                              count: widget.state.eventCounts[light.id] ?? 0,
+                        if (_shownTypes.contains(light.type))
+                          Marker(
+                            point: LatLng(light.lat, light.lng),
+                            width: 44,
+                            height: 44,
+                            child: GestureDetector(
+                              onTap: () => _onMarkerTap(light),
+                              child: _LightPin(
+                                active: light.id == active?.id,
+                                type: light.type,
+                                count: widget.state.eventCounts[light.id] ?? 0,
+                              ),
                             ),
                           ),
-                        ),
                     ],
                   ),
                   const RichAttributionWidget(
@@ -208,6 +235,26 @@ class _MapScreenState extends State<MapScreen> {
                     ],
                   ),
                 ],
+              ),
+              Positioned(
+                top: 8,
+                left: 8,
+                right: 8,
+                child: Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final t in LightType.values)
+                      FilterChip(
+                        avatar: Icon(t.icon, size: 18),
+                        label: Text(t.label),
+                        showCheckmark: false,
+                        selected: _shownTypes.contains(t),
+                        onSelected: (on) => setState(() {
+                          on ? _shownTypes.add(t) : _shownTypes.remove(t);
+                        }),
+                      ),
+                  ],
+                ),
               ),
               if (widget.state.lights.isEmpty)
                 Positioned(
@@ -258,9 +305,11 @@ class _MapScreenState extends State<MapScreen> {
 
 class _LightPin extends StatelessWidget {
   final bool active;
+  final LightType type;
   final int count;
 
-  const _LightPin({required this.active, required this.count});
+  const _LightPin(
+      {required this.active, required this.type, required this.count});
 
   @override
   Widget build(BuildContext context) {
@@ -278,7 +327,7 @@ class _LightPin extends StatelessWidget {
               BoxShadow(blurRadius: 4, color: Colors.black38),
             ],
           ),
-          child: const Icon(Icons.traffic, color: Colors.white, size: 24),
+          child: Icon(type.icon, color: Colors.white, size: 24),
         ),
         if (count > 0)
           Positioned(

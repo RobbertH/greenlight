@@ -1,9 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:greenlight/data/db.dart';
+import 'package:greenlight/data/defaults.dart';
 import 'package:greenlight/data/light_repository.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
 
   late LightRepository repo;
@@ -74,12 +79,87 @@ void main() {
     final lines = csv.trim().split('\n');
     expect(lines.length, 3, reason: 'header + 2 events');
     expect(lines.first,
-        'event_id,light_id,light_name,ts_ms,iso8601_local,source');
+        'event_id,light_id,light_name,light_type,ts_ms,iso8601_local,source');
     expect(csv, contains('"Say ""go"""'), reason: 'quotes escaped');
     expect(csv, contains('1700000090000'));
 
     final json = repo.eventsToJson(light, events);
     expect(json, contains('"ts_ms": 1700000000000'));
     expect(json, contains('"source": "widget"'));
+    expect(json, contains('"type": "pedestrian"'));
+  });
+
+  test('light type round-trips and defaults to pedestrian', () async {
+    final walk = await repo.createLight('W', 0, 0);
+    final bike = await repo.createLight('B', 0, 1, type: LightType.bike);
+    final car = await repo.createLight('C', 0, 2, type: LightType.car);
+    final byId = {for (final l in await repo.getLights()) l.id: l.type};
+    expect(byId[walk.id], LightType.pedestrian);
+    expect(byId[bike.id], LightType.bike);
+    expect(byId[car.id], LightType.car);
+  });
+
+  test('v1 database migrates to v2, existing lights become pedestrian',
+      () async {
+    final dir = await Directory.systemTemp.createTemp('greenlight_migration');
+    final path = p.join(dir.path, 'mig.db');
+    final v1 = await databaseFactoryFfi.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: 1,
+        onCreate: (db, _) async {
+          await db.execute('''
+            CREATE TABLE lights (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              lat REAL NOT NULL, lng REAL NOT NULL,
+              created_at INTEGER NOT NULL
+            )''');
+          await db.execute('''
+            CREATE TABLE events (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              light_id INTEGER NOT NULL REFERENCES lights(id) ON DELETE CASCADE,
+              ts_ms INTEGER NOT NULL,
+              source TEXT NOT NULL CHECK (source IN ('app','widget')),
+              created_at INTEGER NOT NULL,
+              UNIQUE(light_id, ts_ms) ON CONFLICT IGNORE
+            )''');
+        },
+      ),
+    );
+    await v1.insert('lights',
+        {'name': 'Old', 'lat': 1.0, 'lng': 2.0, 'created_at': 3});
+    await v1.close();
+
+    final v2 = await AppDatabase.open(factory: databaseFactoryFfi, path: path);
+    final migrated = LightRepository(v2);
+    final lights = await migrated.getLights();
+    expect(lights.single.name, 'Old');
+    expect(lights.single.type, LightType.pedestrian);
+    await v2.close();
+    await dir.delete(recursive: true);
+  });
+
+  test('seeding inserts the 4 Naamsepoort pedestrian crossings', () async {
+    await seedNaamsepoortDefaults(repo);
+    final lights = await repo.getLights();
+    expect(lights.length, 4);
+    expect(lights.every((l) => l.type == LightType.pedestrian), isTrue);
+    expect(lights.every((l) => l.name.startsWith('Naamsepoort')), isTrue);
+  });
+
+  test('onFreshInstall fires on creation, not on reopen', () async {
+    final dir = await Directory.systemTemp.createTemp('greenlight_fresh');
+    final path = p.join(dir.path, 'fresh.db');
+    var calls = 0;
+    final db1 = await AppDatabase.open(
+        factory: databaseFactoryFfi, path: path, onFreshInstall: () => calls++);
+    await db1.close();
+    expect(calls, 1);
+    final db2 = await AppDatabase.open(
+        factory: databaseFactoryFfi, path: path, onFreshInstall: () => calls++);
+    await db2.close();
+    expect(calls, 1, reason: 'existing DB must not re-trigger seeding');
+    await dir.delete(recursive: true);
   });
 }

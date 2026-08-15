@@ -6,7 +6,9 @@ import 'package:home_widget/home_widget.dart';
 import 'app_state.dart';
 import 'constants.dart';
 import 'data/db.dart';
+import 'data/defaults.dart';
 import 'data/light_repository.dart';
+import 'data/widget_sync.dart';
 import 'screens/map_screen.dart';
 import 'screens/record_screen.dart';
 
@@ -15,7 +17,16 @@ Future<void> main() async {
   try {
     await HomeWidget.setAppGroupId(appGroupId);
   } catch (_) {}
-  final repo = LightRepository(await AppDatabase.open());
+  var freshInstall = false;
+  final repo = LightRepository(
+      await AppDatabase.open(onFreshInstall: () => freshInstall = true));
+  if (freshInstall) {
+    // Order matters: drop any widget kv state surviving from a previous
+    // install BEFORE seeding and BEFORE the merge below, or a stale queue
+    // could attach another install's taps to the freshly seeded lights.
+    await WidgetSync.resetForFreshInstall();
+    await seedNaamsepoortDefaults(repo);
+  }
   final state = AppState(repo);
   // Pull in anything the widget recorded while the app was dead, before the
   // first frame reads counts.

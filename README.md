@@ -9,7 +9,14 @@ native home-screen widgets.
 
 ## The loop
 
-1. **Add a light**: long-press its location on the map, name it.
+The map opens on **Naamsepoort, Leuven**, pre-seeded (first run) with its four
+signal-controlled pedestrian crossings — one pin per crossing, since the
+paired signal heads of a crossing turn green together. Coordinates come from
+OpenStreetMap's `crossing=traffic_signals` nodes.
+
+1. **Add a light**: long-press its location on the map, name it, pick its
+   type — pedestrian 🚶, bike 🚲, or car 🚗 (filter chips on the map toggle
+   each type's pins).
 2. **Select it**: tap its pin — the app (and the widget) remember the last
    selected light.
 3. **Record**: while waiting at red, open the record screen (or just look at

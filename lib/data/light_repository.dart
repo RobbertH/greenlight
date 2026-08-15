@@ -2,11 +2,29 @@ import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 
+/// What kind of signal this light controls. Pedestrian and bike crossings
+/// usually have one signal head per direction, but paired heads of the same
+/// crossing turn green together — so one Light represents the whole crossing.
+enum LightType {
+  pedestrian('pedestrian', 'Pedestrian'),
+  bike('bike', 'Bike'),
+  car('car', 'Car');
+
+  final String dbValue;
+  final String label;
+
+  const LightType(this.dbValue, this.label);
+
+  static LightType fromDb(String? v) => LightType.values
+      .firstWhere((t) => t.dbValue == v, orElse: () => LightType.pedestrian);
+}
+
 class Light {
   final int id;
   final String name;
   final double lat;
   final double lng;
+  final LightType type;
   final int createdAt;
 
   const Light({
@@ -14,6 +32,7 @@ class Light {
     required this.name,
     required this.lat,
     required this.lng,
+    required this.type,
     required this.createdAt,
   });
 
@@ -22,6 +41,7 @@ class Light {
         name: row['name'] as String,
         lat: (row['lat'] as num).toDouble(),
         lng: (row['lng'] as num).toDouble(),
+        type: LightType.fromDb(row['type'] as String?),
         createdAt: row['created_at'] as int,
       );
 }
@@ -63,15 +83,18 @@ class LightRepository {
     return rows.isEmpty ? null : Light.fromRow(rows.first);
   }
 
-  Future<Light> createLight(String name, double lat, double lng) async {
+  Future<Light> createLight(String name, double lat, double lng,
+      {LightType type = LightType.pedestrian}) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     final id = await db.insert('lights', {
       'name': name,
       'lat': lat,
       'lng': lng,
+      'type': type.dbValue,
       'created_at': now,
     });
-    return Light(id: id, name: name, lat: lat, lng: lng, createdAt: now);
+    return Light(
+        id: id, name: name, lat: lat, lng: lng, type: type, createdAt: now);
   }
 
   Future<void> renameLight(int id, String name) =>
@@ -146,10 +169,12 @@ class LightRepository {
 
   String eventsToCsv(Light light, List<LightEvent> events) {
     final name = '"${light.name.replaceAll('"', '""')}"';
-    final b = StringBuffer('event_id,light_id,light_name,ts_ms,iso8601_local,source\n');
+    final b = StringBuffer(
+        'event_id,light_id,light_name,light_type,ts_ms,iso8601_local,source\n');
     for (final e in events) {
       final iso = DateTime.fromMillisecondsSinceEpoch(e.tsMs).toIso8601String();
-      b.writeln('${e.id},${e.lightId},$name,${e.tsMs},$iso,${e.source}');
+      b.writeln(
+          '${e.id},${e.lightId},$name,${light.type.dbValue},${e.tsMs},$iso,${e.source}');
     }
     return b.toString();
   }
@@ -161,6 +186,7 @@ class LightRepository {
           'name': light.name,
           'lat': light.lat,
           'lng': light.lng,
+          'type': light.type.dbValue,
         },
         'events': [
           for (final e in events)

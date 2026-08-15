@@ -33,8 +33,9 @@ class AppState extends ChangeNotifier {
     await WidgetSync.setActiveLight(repo, light);
   }
 
-  Future<Light> addLight(String name, double lat, double lng) async {
-    final light = await repo.createLight(name, lat, lng);
+  Future<Light> addLight(String name, double lat, double lng,
+      {LightType type = LightType.pedestrian}) async {
+    final light = await repo.createLight(name, lat, lng, type: type);
     lights = await repo.getLights();
     notifyListeners();
     return light;

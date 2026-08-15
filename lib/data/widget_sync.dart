@@ -26,6 +26,15 @@ class WidgetSync {
     } catch (_) {}
   }
 
+  /// A fresh install must not inherit another install's widget state: on iOS
+  /// the App Group container can outlive an uninstall, leaving a stale queue
+  /// and active-light id that would otherwise merge into (or activate) the
+  /// newly seeded lights, whose autoincrement ids restart at 1.
+  static Future<void> resetForFreshInstall() async {
+    await _set(kPendingEvents, '[]');
+    await clearActiveLight();
+  }
+
   static Future<int?> getActiveLightId() async {
     final s = await _get<String>(kActiveLightId);
     return s == null ? null : int.tryParse(s);

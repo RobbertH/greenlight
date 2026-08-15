@@ -18,3 +18,9 @@ const kCountDate = 'count_date';
 const kLastRecordedMs = 'last_recorded_ms';
 
 const kRecordRoute = '/record';
+
+/// Default map focus: Naamsepoort, Leuven — centroid of the junction's
+/// signal-controlled crossings per OSM (node cluster around 50.8687, 4.6985).
+const defaultCenterLat = 50.86868;
+const defaultCenterLng = 4.69852;
+const defaultZoom = 17.5;
