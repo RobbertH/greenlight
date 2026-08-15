@@ -1,6 +1,9 @@
 package com.robberthofman.greenlight
 
+import android.app.AlarmManager
 import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -8,11 +11,13 @@ import android.net.Uri
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
 object WidgetViews {
     const val ACTION_RECORD = "com.robberthofman.greenlight.RECORD_GREEN"
+    const val ACTION_REFRESH = "com.robberthofman.greenlight.REFRESH_WIDGET"
 
     // The exact SharedPreferences file home_widget's Dart saveWidgetData
     // writes to; key names mirror lib/constants.dart.
@@ -72,4 +77,38 @@ object WidgetViews {
     private fun readIntSafe(p: SharedPreferences, key: String): Int =
         runCatching { p.getInt(key, 0) }
             .getOrElse { runCatching { p.getLong(key, 0L).toInt() }.getOrDefault(0) }
+
+    fun pushToAllWidgets(context: Context) {
+        AppWidgetManager.getInstance(context).updateAppWidget(
+            ComponentName(context, GreenlightWidgetProvider::class.java),
+            build(context)
+        )
+    }
+
+    /// The "N greens today" text only changes when RemoteViews are rebuilt;
+    /// without this alarm the widget shows yesterday's count all morning.
+    /// Calendar arithmetic is DST-correct; inexact-while-idle is fine for a
+    /// display refresh. When no widgets remain the alarm is cancelled.
+    fun armMidnightAlarm(context: Context) {
+        val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val pi = PendingIntent.getBroadcast(
+            context, 1,
+            Intent(context, RecordGreenReceiver::class.java).setAction(ACTION_REFRESH),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val ids = AppWidgetManager.getInstance(context)
+            .getAppWidgetIds(ComponentName(context, GreenlightWidgetProvider::class.java))
+        if (ids.isEmpty()) {
+            alarms.cancel(pi)
+            return
+        }
+        val nextMidnight = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 5)
+            set(Calendar.MILLISECOND, 0)
+        }
+        alarms.setAndAllowWhileIdle(AlarmManager.RTC, nextMidnight.timeInMillis, pi)
+    }
 }

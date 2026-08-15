@@ -65,6 +65,12 @@ class CycleEstimator {
   /// Taps closer together than this are double-taps, not separate cycles.
   static const double dedupeGapS = 15;
 
+  /// A 48 h stage-1 window is only trustworthy with enough events: with n≈5-8
+  /// the coarse grid's ~10³ independent frequencies make a spurious near-max
+  /// peak at smaller f likely, and the largest-C tie-break then locks onto
+  /// noise the narrow stage-2 band cannot escape.
+  static const int stage1MinEvents = 20;
+
   /// Grid resolution: 8 samples across the R(f) peak (peak width ≈ 1/span).
   static const int _samplesPerPeak = 8;
 
@@ -172,7 +178,7 @@ class CycleEstimator {
   /// longest tail of events that fits the op budget.
   static List<double> _pickScanWindow(List<double> s, double spanFull) {
     final tail48 = _tailSince(s, s.last - 172800);
-    if (tail48.length >= minEvents && _spanOf(tail48) >= 2 * minCycleS) {
+    if (tail48.length >= stage1MinEvents && _spanOf(tail48) >= 2 * minCycleS) {
       return tail48;
     }
     var window = s;
@@ -254,5 +260,10 @@ class _ScanResult {
   _ScanResult(this.fs, this.rs);
 }
 
-/// Top-level entry point for `compute()`.
-CycleEstimate? estimateCycle(List<int> tsMs) => CycleEstimator.estimate(tsMs);
+/// Top-level entry point for `compute()`. Anchors the recency window to real
+/// wall-clock time so stale data ages out (a months-old fit must not produce
+/// a confident countdown extrapolated thousands of cycles forward).
+CycleEstimate? estimateCycle(List<int> tsMs) => CycleEstimator.estimate(
+      tsMs,
+      nowMs: DateTime.now().millisecondsSinceEpoch,
+    );

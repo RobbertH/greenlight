@@ -146,6 +146,29 @@ void main() {
     expect((est.cycleSeconds - 90).abs(), lessThan(0.1));
   });
 
+  test('months-old data ages out instead of producing a confident fit', () {
+    final ts = synthetic(cycleS: 90, phaseS: 17, days: 3, samples: 60, seed: 42);
+    // "Now" is 60 days after the last recording: everything is outside the
+    // 30-day window, so no estimate — not a countdown extrapolated across
+    // tens of thousands of cycles.
+    final now = ts.last + 60 * 86400000;
+    expect(CycleEstimator.estimate(ts, nowMs: now), isNull);
+  });
+
+  test('sparse commuter data (3/day over 21 days) still recovers the cycle',
+      () {
+    // Regression: the 48 h stage-1 tail holds only ~6 events here; with the
+    // old >=5 gate a spurious noise peak at smaller f could win the largest-C
+    // tie-break and the narrow stage-2 band could never escape it.
+    for (final seed in [2, 9, 21, 34]) {
+      final ts =
+          synthetic(cycleS: 90, phaseS: 33, days: 21, samples: 63, seed: seed);
+      final est = CycleEstimator.estimate(ts, nowMs: ts.last)!;
+      expect((est.cycleSeconds - 90).abs(), lessThan(0.1),
+          reason: 'seed=$seed C=${est.cycleSeconds}');
+    }
+  });
+
   test('prediction lands within one cycle of now', () {
     final ts = synthetic(cycleS: 75, phaseS: 5, days: 2, samples: 40, seed: 13);
     final est = CycleEstimator.estimate(ts)!;

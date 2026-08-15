@@ -21,8 +21,10 @@ struct GreenlightProvider: TimelineProvider {
                    completion: @escaping (Timeline<GreenlightEntry>) -> Void) {
     let now = load()
     // A second entry at next local midnight resets the displayed day count.
-    let midnight = Calendar.current
-      .startOfDay(for: Date()).addingTimeInterval(86400)
+    // Calendar day arithmetic, not +86400 s: DST days are 23 or 25 h long.
+    let startOfDay = Calendar.current.startOfDay(for: Date())
+    let midnight = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)
+      ?? startOfDay.addingTimeInterval(86400)
     let reset = GreenlightEntry(date: midnight, lightName: now.lightName,
                                 todayCount: 0)
     completion(Timeline(entries: [now, reset], policy: .atEnd))

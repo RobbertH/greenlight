@@ -63,6 +63,14 @@ class AppState extends ChangeNotifier {
     return inserted;
   }
 
+  Future<void> deleteEvent(int eventId) async {
+    await repo.deleteEvent(eventId);
+    eventCounts = await repo.eventCountsByLight();
+    notifyListeners();
+    // Deleting one of today's events must also correct the widget's counts.
+    await WidgetSync.pushWidgetState(repo);
+  }
+
   /// Merges taps recorded by the home-screen widget and refreshes its display.
   Future<int> syncWithWidget() async {
     final merged = await WidgetSync.mergePendingEvents(repo);

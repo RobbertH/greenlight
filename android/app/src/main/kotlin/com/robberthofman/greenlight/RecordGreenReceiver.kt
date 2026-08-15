@@ -1,8 +1,6 @@
 package com.robberthofman.greenlight
 
-import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import org.json.JSONArray
@@ -14,6 +12,12 @@ import org.json.JSONObject
 class RecordGreenReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val tsMs = System.currentTimeMillis() // capture before anything else
+        if (intent.action == WidgetViews.ACTION_REFRESH) {
+            // Midnight rollover: just re-render the count and re-arm.
+            WidgetViews.pushToAllWidgets(context)
+            WidgetViews.armMidnightAlarm(context)
+            return
+        }
         if (intent.action != WidgetViews.ACTION_RECORD) return
 
         val prefs = WidgetViews.prefs(context)
@@ -39,9 +43,7 @@ class RecordGreenReceiver : BroadcastReceiver() {
             .putInt("today_count", count)
             .commit()
 
-        AppWidgetManager.getInstance(context).updateAppWidget(
-            ComponentName(context, GreenlightWidgetProvider::class.java),
-            WidgetViews.build(context)
-        )
+        WidgetViews.pushToAllWidgets(context)
+        WidgetViews.armMidnightAlarm(context)
     }
 }

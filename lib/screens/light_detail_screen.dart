@@ -185,8 +185,7 @@ class _LightDetailScreenState extends State<LightDetailScreen> {
                       icon: const Icon(Icons.delete_outline, size: 20),
                       tooltip: 'Delete this event',
                       onPressed: () async {
-                        await _repo.deleteEvent(e.id);
-                        await widget.state.syncWithWidget();
+                        await widget.state.deleteEvent(e.id);
                         await _load();
                       },
                     ),

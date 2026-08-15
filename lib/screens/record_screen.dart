@@ -28,7 +28,17 @@ class _RecordScreenState extends State<RecordScreen> {
   @override
   void initState() {
     super.initState();
+    // Re-runs on every AppState change, notably the lifecycle-resume merge of
+    // widget-recorded taps — otherwise this screen shows stale counts and a
+    // prediction that ignores those events.
+    widget.state.addListener(_refresh);
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    widget.state.removeListener(_refresh);
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -56,8 +66,8 @@ class _RecordScreenState extends State<RecordScreen> {
     Future.delayed(const Duration(milliseconds: 250), () {
       if (mounted) setState(() => _flash = false);
     });
+    // recordGreen notifies AppState listeners, which triggers _refresh.
     await widget.state.recordGreen(tsMs);
-    await _refresh();
   }
 
   @override

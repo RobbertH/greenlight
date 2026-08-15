@@ -15,5 +15,13 @@ class GreenlightWidgetProvider : HomeWidgetProvider() {
         for (id in appWidgetIds) {
             appWidgetManager.updateAppWidget(id, WidgetViews.build(context))
         }
+        WidgetViews.armMidnightAlarm(context)
+    }
+
+    override fun onDisabled(context: Context) {
+        // Last widget removed: armMidnightAlarm sees zero instances and
+        // cancels the pending refresh alarm.
+        WidgetViews.armMidnightAlarm(context)
+        super.onDisabled(context)
     }
 }

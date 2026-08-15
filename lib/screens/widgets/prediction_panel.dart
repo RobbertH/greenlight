@@ -57,8 +57,8 @@ class _PredictionPanelState extends State<PredictionPanel> {
         widget.eventCount < 5
             ? 'No cycle yet — ${widget.eventCount} of 5 minimum records. '
                 'Tap each time this light turns green.'
-            : 'Not enough spread in the data yet — keep recording over a few '
-                'more cycles.',
+            : 'No usable cycle yet — the records are too old or too close '
+                'together. Recent taps count most (last 30 days).',
         style: theme.textTheme.bodyMedium,
       );
     } else if (est.tier == ConfidenceTier.insufficient) {
