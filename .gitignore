@@ -43,3 +43,13 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Service configs & secrets — never commit (repo is public)
+**/google-services.json
+**/GoogleService-Info.plist
+**/firebase_app_id_file.json
+.env
+.env.*
+*.pem
+*.p12
+*.mobileprovision
