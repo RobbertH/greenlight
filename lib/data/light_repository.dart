@@ -1,0 +1,175 @@
+import 'dart:convert';
+
+import 'package:sqflite/sqflite.dart';
+
+class Light {
+  final int id;
+  final String name;
+  final double lat;
+  final double lng;
+  final int createdAt;
+
+  const Light({
+    required this.id,
+    required this.name,
+    required this.lat,
+    required this.lng,
+    required this.createdAt,
+  });
+
+  factory Light.fromRow(Map<String, Object?> row) => Light(
+        id: row['id'] as int,
+        name: row['name'] as String,
+        lat: (row['lat'] as num).toDouble(),
+        lng: (row['lng'] as num).toDouble(),
+        createdAt: row['created_at'] as int,
+      );
+}
+
+class LightEvent {
+  final int id;
+  final int lightId;
+  final int tsMs;
+  final String source;
+  final int createdAt;
+
+  const LightEvent({
+    required this.id,
+    required this.lightId,
+    required this.tsMs,
+    required this.source,
+    required this.createdAt,
+  });
+
+  factory LightEvent.fromRow(Map<String, Object?> row) => LightEvent(
+        id: row['id'] as int,
+        lightId: row['light_id'] as int,
+        tsMs: row['ts_ms'] as int,
+        source: row['source'] as String,
+        createdAt: row['created_at'] as int,
+      );
+}
+
+class LightRepository {
+  final Database db;
+
+  LightRepository(this.db);
+
+  Future<List<Light>> getLights() async =>
+      (await db.query('lights', orderBy: 'created_at')).map(Light.fromRow).toList();
+
+  Future<Light?> getLight(int id) async {
+    final rows = await db.query('lights', where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : Light.fromRow(rows.first);
+  }
+
+  Future<Light> createLight(String name, double lat, double lng) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final id = await db.insert('lights', {
+      'name': name,
+      'lat': lat,
+      'lng': lng,
+      'created_at': now,
+    });
+    return Light(id: id, name: name, lat: lat, lng: lng, createdAt: now);
+  }
+
+  Future<void> renameLight(int id, String name) =>
+      db.update('lights', {'name': name}, where: 'id = ?', whereArgs: [id]);
+
+  Future<void> deleteLight(int id) async {
+    await db.delete('lights', where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// Inserts a green-transition event. Returns false when an identical
+  /// (light_id, ts_ms) event already existed (the DDL-level ON CONFLICT IGNORE
+  /// swallows the insert, so the reliable signal is `changes()`).
+  Future<bool> recordEvent(int lightId, int tsMs, String source) async {
+    await db.insert('events', {
+      'light_id': lightId,
+      'ts_ms': tsMs,
+      'source': source,
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    });
+    final changed = Sqflite.firstIntValue(await db.rawQuery('SELECT changes()')) ?? 0;
+    return changed > 0;
+  }
+
+  Future<List<LightEvent>> eventsForLight(int lightId, {int? limit}) async =>
+      (await db.query(
+        'events',
+        where: 'light_id = ?',
+        whereArgs: [lightId],
+        orderBy: 'ts_ms DESC',
+        limit: limit,
+      ))
+          .map(LightEvent.fromRow)
+          .toList();
+
+  /// Ascending epoch-ms timestamps, the input shape the cycle estimator wants.
+  Future<List<int>> eventTimestamps(int lightId) async =>
+      (await db.query('events',
+              columns: ['ts_ms'],
+              where: 'light_id = ?',
+              whereArgs: [lightId],
+              orderBy: 'ts_ms ASC'))
+          .map((r) => r['ts_ms'] as int)
+          .toList();
+
+  Future<void> deleteEvent(int id) async {
+    await db.delete('events', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> totalCount(int lightId) async =>
+      Sqflite.firstIntValue(await db.rawQuery(
+          'SELECT COUNT(*) FROM events WHERE light_id = ?', [lightId])) ??
+      0;
+
+  /// Events since local midnight.
+  Future<int> todayCount(int lightId) async {
+    final now = DateTime.now();
+    final midnight = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+    return Sqflite.firstIntValue(await db.rawQuery(
+            'SELECT COUNT(*) FROM events WHERE light_id = ? AND ts_ms >= ?',
+            [lightId, midnight])) ??
+        0;
+  }
+
+  Future<int?> lastEventTs(int lightId) async => Sqflite.firstIntValue(await db
+      .rawQuery('SELECT MAX(ts_ms) FROM events WHERE light_id = ?', [lightId]));
+
+  Future<Map<int, int>> eventCountsByLight() async {
+    final rows = await db
+        .rawQuery('SELECT light_id, COUNT(*) AS n FROM events GROUP BY light_id');
+    return {for (final r in rows) r['light_id'] as int: r['n'] as int};
+  }
+
+  String eventsToCsv(Light light, List<LightEvent> events) {
+    final name = '"${light.name.replaceAll('"', '""')}"';
+    final b = StringBuffer('event_id,light_id,light_name,ts_ms,iso8601_local,source\n');
+    for (final e in events) {
+      final iso = DateTime.fromMillisecondsSinceEpoch(e.tsMs).toIso8601String();
+      b.writeln('${e.id},${e.lightId},$name,${e.tsMs},$iso,${e.source}');
+    }
+    return b.toString();
+  }
+
+  String eventsToJson(Light light, List<LightEvent> events) =>
+      const JsonEncoder.withIndent('  ').convert({
+        'light': {
+          'id': light.id,
+          'name': light.name,
+          'lat': light.lat,
+          'lng': light.lng,
+        },
+        'events': [
+          for (final e in events)
+            {
+              'ts_ms': e.tsMs,
+              'iso_local':
+                  DateTime.fromMillisecondsSinceEpoch(e.tsMs).toIso8601String(),
+              'source': e.source,
+            }
+        ],
+      });
+}
